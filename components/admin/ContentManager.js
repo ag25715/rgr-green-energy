@@ -16,7 +16,7 @@ export function ContentManager({ title, description, endpoint, fields, itemLabel
   const [form, setForm] = useState({});
 
   const load = () => apiFetch(`/admin/${endpoint}`).then(setItems).catch(e=>toast.error(e.message));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const startCreate = () => { setEditing({ __new: true }); setForm({}); };
   const startEdit = (item) => { setEditing(item); setForm(item); };

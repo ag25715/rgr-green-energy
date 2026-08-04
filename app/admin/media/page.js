@@ -13,7 +13,7 @@ export default function MediaLibrary() {
   const inputRef = useRef(null);
 
   const load = () => apiFetch('/admin/media').then(setItems).catch(e => toast.error(e.message));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const uploadFiles = async (files) => {
     if (!files || !files.length) return;

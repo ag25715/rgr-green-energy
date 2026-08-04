@@ -21,7 +21,7 @@ export default function LeadsPage() {
   const [notes, setNotes] = useState('');
 
   const load = () => apiFetch('/admin/leads').then(setLeads).catch(e=>toast.error(e.message));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
 
   const updateStatus = async (id, status) => {
     try { await apiFetch(`/admin/leads/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }); toast.success('Updated'); load(); if (selected) setSelected({...selected, status}); }

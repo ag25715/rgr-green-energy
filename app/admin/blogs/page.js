@@ -28,7 +28,7 @@ export default function AdminBlogs() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const load = () => apiFetch('/admin/blogs').then(setItems).catch(e=>toast.error(e.message));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
   const startCreate = () => { setEditing({ __new: true }); setForm({}); };
   const startEdit = (item) => { setEditing(item); setForm(item); };
   const save = async () => { try { if (editing.__new) await apiFetch('/admin/blogs', { method: 'POST', body: JSON.stringify(form) }); else await apiFetch(`/admin/blogs/${editing._id}`, { method: 'PUT', body: JSON.stringify(form) }); toast.success('Saved'); setEditing(null); load(); } catch (e) { toast.error(e.message); } };
