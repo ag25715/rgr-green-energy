@@ -1,9 +1,42 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { getDb, COL } from '@/lib/db';
 import { signToken, verifyPassword, hashPassword, requireAdmin } from '@/lib/auth';
 import { DEFAULT_SETTINGS, DEFAULT_CALC, DEFAULT_SOLUTIONS, DEFAULT_PROJECTS, DEFAULT_TESTIMONIALS, DEFAULT_FAQS, DEFAULT_BLOGS } from '@/lib/defaults';
 import { computeSolar } from '@/lib/calculator';
+import { sendEmail, buildLeadEmail } from '@/lib/email';
+
+const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads');
+
+async function notifyLead(db, lead) {
+  try {
+    const settings = (await db.collection(COL.settings).findOne({ _id: 'global' })) || DEFAULT_SETTINGS;
+    const brandName = settings?.brand?.name || 'RGR Green Energy';
+    const notif = settings?.notifications || {};
+    const envList = (process.env.NOTIFY_EMAILS || '').split(',').map(x => x.trim()).filter(Boolean);
+    const settingsList = (notif.leadEmails || '').split(',').map(x => x.trim()).filter(Boolean);
+    const recipients = [...new Set([...settingsList, ...envList])];
+    const { html, text } = buildLeadEmail(lead, brandName);
+    const subject = `New ${lead.source} lead \u2014 ${lead.name || lead.phone || 'Unnamed'}`;
+    let result;
+    if (recipients.length === 0) {
+      result = { sent: false, reason: 'No recipients configured', to: '', subject };
+    } else {
+      result = await sendEmail({ to: recipients.join(','), subject, html, text });
+    }
+    await db.collection('notifications').insertOne({
+      _id: uuidv4(), leadId: lead._id, type: 'LEAD', subject,
+      recipients: recipients.join(','), sent: !!result.sent, reason: result.reason || null,
+      messageId: result.messageId || null, createdAt: new Date().toISOString(),
+    });
+    return result;
+  } catch (e) {
+    console.error('notifyLead error', e);
+    return { sent: false, reason: e.message };
+  }
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -56,8 +89,8 @@ export async function OPTIONS() { return json({}, { status: 204 }); }
 
 export async function GET(request, { params }) {
   await ensureOnce();
-  const path = ((await params).path) || [];
-  const [root, ...rest] = path;
+  const urlPath = ((await params).path) || [];
+  const [root, ...rest] = urlPath;
   const db = await getDb();
   const url = new URL(request.url);
 
@@ -162,6 +195,10 @@ export async function GET(request, { params }) {
         const list = await db.collection(COL.media).find({}).sort({ createdAt: -1 }).toArray();
         return json(list);
       }
+      if (rest[0] === 'notifications') {
+        const list = await db.collection('notifications').find({}).sort({ createdAt: -1 }).limit(100).toArray();
+        return json(list);
+      }
       if (rest[0] === 'me') {
         return json({ email: claims.email, role: claims.role, name: claims.name });
       }
@@ -176,11 +213,33 @@ export async function GET(request, { params }) {
 
 export async function POST(request, { params }) {
   await ensureOnce();
-  const path = ((await params).path) || [];
-  const [root, ...rest] = path;
+  const urlPath = ((await params).path) || [];
+  const [root, ...rest] = urlPath;
   const db = await getDb();
 
   try {
+    // MEDIA UPLOAD (multipart) MUST come first before any request.json() consumption
+    if (root === 'admin' && rest[0] === 'media' && rest[1] === 'upload') {
+      const claims = requireAdmin(request);
+      if (!claims) return json({ error: 'Unauthorized' }, { status: 401 });
+      try {
+        const formData = await request.formData();
+        const file = formData.get('file');
+        if (!file || typeof file === 'string') return json({ error: 'No file uploaded' }, { status: 400 });
+        const buf = Buffer.from(await file.arrayBuffer());
+        const originalName = file.name || 'upload';
+        const ext = (originalName.includes('.') ? originalName.split('.').pop() : 'bin').toLowerCase().slice(0, 8);
+        const id = uuidv4();
+        const filename = `${id}.${ext}`;
+        await fs.mkdir(UPLOAD_DIR, { recursive: true });
+        await fs.writeFile(path.join(UPLOAD_DIR, filename), buf);
+        const url = `/uploads/${filename}`;
+        const doc = { _id: id, filename, originalName, mimeType: file.type || '', size: buf.length, url, folder: formData.get('folder') || 'general', createdAt: new Date().toISOString() };
+        await db.collection(COL.media).insertOne(doc);
+        return json(doc);
+      } catch (e) { return json({ error: e.message }, { status: 500 }); }
+    }
+
     if (root === 'auth' && rest[0] === 'login') {
       const { email, password } = await request.json();
       const user = await db.collection(COL.users).findOne({ email: (email||'').toLowerCase().trim() });
@@ -197,7 +256,7 @@ export async function POST(request, { params }) {
       const result = computeSolar(body, settings);
       // Optional: capture lead if contact info sent
       if (body.name || body.phone || body.email) {
-        await db.collection(COL.leads).insertOne({
+        const lead = {
           _id: uuidv4(),
           name: body.name || '',
           phone: body.phone || '',
@@ -209,7 +268,9 @@ export async function POST(request, { params }) {
           notes: '',
           payload: { input: body, result },
           createdAt: new Date().toISOString(),
-        });
+        };
+        await db.collection(COL.leads).insertOne(lead);
+        notifyLead(db, lead);
       }
       return json(result);
     }
@@ -231,6 +292,7 @@ export async function POST(request, { params }) {
         createdAt: new Date().toISOString(),
       };
       await db.collection(COL.leads).insertOne(lead);
+      notifyLead(db, lead);
       return json({ ok: true, id: lead._id });
     }
 
@@ -238,7 +300,9 @@ export async function POST(request, { params }) {
       const body = await request.json();
       const app = { _id: uuidv4(), ...body, createdAt: new Date().toISOString() };
       await db.collection(COL.applications).insertOne(app);
-      await db.collection(COL.leads).insertOne({ _id: uuidv4(), name: body.name || '', phone: body.phone || '', email: body.email || '', message: `Applied for: ${body.jobTitle||''}`, source: 'CAREER', status: 'NEW', createdAt: new Date().toISOString() });
+      const lead = { _id: uuidv4(), name: body.name || '', phone: body.phone || '', email: body.email || '', message: `Applied for: ${body.jobTitle||''}`, source: 'CAREER', status: 'NEW', createdAt: new Date().toISOString() };
+      await db.collection(COL.leads).insertOne(lead);
+      notifyLead(db, lead);
       return json({ ok: true, id: app._id });
     }
 
@@ -295,8 +359,8 @@ export async function POST(request, { params }) {
 export async function PUT(request, { params }) {
   const claims = requireAdmin(request);
   if (!claims) return json({ error: 'Unauthorized' }, { status: 401 });
-  const path = ((await params).path) || [];
-  const [root, ...rest] = path;
+  const urlPath = ((await params).path) || [];
+  const [root, ...rest] = urlPath;
   const db = await getDb();
   const body = await request.json().catch(()=>({}));
 
@@ -336,8 +400,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   const claims = requireAdmin(request);
   if (!claims) return json({ error: 'Unauthorized' }, { status: 401 });
-  const path = ((await params).path) || [];
-  const [root, ...rest] = path;
+  const urlPath = ((await params).path) || [];
+  const [root, ...rest] = urlPath;
   const db = await getDb();
   try {
     if (root === 'admin') {

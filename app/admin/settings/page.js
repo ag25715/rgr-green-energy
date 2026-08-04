@@ -15,14 +15,14 @@ export default function WebsiteSettings() {
   useEffect(() => { fetch('/api/settings').then(r=>r.json()).then(setS); }, []);
   const save = async () => { try { const r = await apiFetch('/admin/settings', { method: 'PUT', body: JSON.stringify(s) }); setS(r); toast.success('Saved'); } catch(e){ toast.error(e.message); } };
   if (!s) return <AdminShell>Loading…</AdminShell>;
-  const upd = (path, val) => { const clone = structuredClone(s); const keys = path.split('.'); let o = clone; for (let i=0;i<keys.length-1;i++) o = o[keys[i]]; o[keys[keys.length-1]] = val; setS(clone); };
+  const upd = (path, val) => { const clone = structuredClone(s); const keys = path.split('.'); let o = clone; for (let i=0;i<keys.length-1;i++) { if (o[keys[i]] == null || typeof o[keys[i]] !== 'object') o[keys[i]] = {}; o = o[keys[i]]; } o[keys[keys.length-1]] = val; setS(clone); };
 
   return (
     <AdminShell>
       <div className="flex justify-between items-start flex-wrap gap-4"><div><h1 className="text-3xl font-bold text-navy-900">Website Settings</h1><p className="text-navy-600 mt-1">Branding, contact, navigation, footer, homepage, about and SEO.</p></div><Button onClick={save} className="bg-emerald2-600 text-white gap-2"><Save className="h-4 w-4"/>Save All</Button></div>
 
       <Tabs defaultValue="brand" className="mt-6">
-        <TabsList className="flex flex-wrap h-auto"><TabsTrigger value="brand">Brand</TabsTrigger><TabsTrigger value="contact">Contact</TabsTrigger><TabsTrigger value="social">Social</TabsTrigger><TabsTrigger value="home">Homepage</TabsTrigger><TabsTrigger value="about">About</TabsTrigger><TabsTrigger value="nav">Navigation</TabsTrigger><TabsTrigger value="footer">Footer</TabsTrigger><TabsTrigger value="seo">SEO</TabsTrigger></TabsList>
+        <TabsList className="flex flex-wrap h-auto"><TabsTrigger value="brand">Brand</TabsTrigger><TabsTrigger value="contact">Contact</TabsTrigger><TabsTrigger value="social">Social</TabsTrigger><TabsTrigger value="home">Homepage</TabsTrigger><TabsTrigger value="about">About</TabsTrigger><TabsTrigger value="nav">Navigation</TabsTrigger><TabsTrigger value="footer">Footer</TabsTrigger><TabsTrigger value="notifications">Notifications</TabsTrigger><TabsTrigger value="seo">SEO</TabsTrigger></TabsList>
 
         <TabsContent value="brand"><Card className="p-6 border-navy-100 space-y-3 mt-4">
           <Row><Label>Company Name</Label><Input value={s.brand.name} onChange={e=>upd('brand.name', e.target.value)}/></Row>
@@ -78,6 +78,13 @@ export default function WebsiteSettings() {
         <TabsContent value="footer"><Card className="p-6 border-navy-100 space-y-3 mt-4">
           <Row><Label>About text</Label><Textarea rows={3} value={s.footer.about} onChange={e=>upd('footer.about', e.target.value)}/></Row>
           <Row><Label>Copyright</Label><Input value={s.footer.copyright} onChange={e=>upd('footer.copyright', e.target.value)}/></Row>
+        </Card></TabsContent>
+
+        <TabsContent value="notifications"><Card className="p-6 border-navy-100 space-y-3 mt-4">
+          <div className="text-sm text-navy-600">Configure who receives email alerts for every new lead (Contact / Proposal / Calculator / Career).</div>
+          <Row><Label>Lead recipient emails (comma separated)</Label><Input value={s.notifications?.leadEmails || ''} onChange={e=>upd('notifications.leadEmails', e.target.value)} placeholder="sales@rgrgreenenergy.com, founder@rgrgreenenergy.com"/></Row>
+          <Row><Label>Email subject prefix</Label><Input value={s.notifications?.subjectPrefix || ''} onChange={e=>upd('notifications.subjectPrefix', e.target.value)} placeholder="[RGR Lead]"/></Row>
+          <div className="text-xs text-navy-500 bg-navy-50 rounded-lg p-3 mt-2">To actually deliver emails, set SMTP credentials in the server .env (SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM). Without SMTP, notifications are logged and visible on the Notifications page.</div>
         </Card></TabsContent>
 
         <TabsContent value="seo"><Card className="p-6 border-navy-100 space-y-4 mt-4">

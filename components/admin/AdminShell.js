@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Users, FileText, FolderKanban, Star, HelpCircle, Settings, Calculator, LogOut, Sun, Image as ImageIcon, Briefcase } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, FolderKanban, Star, HelpCircle, Settings, Calculator, LogOut, Sun, Image as ImageIcon, Bell } from 'lucide-react';
 
 const nav = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,6 +11,8 @@ const nav = [
   { href: '/admin/blogs', label: 'Blogs', icon: FileText },
   { href: '/admin/testimonials', label: 'Testimonials', icon: Star },
   { href: '/admin/faqs', label: 'FAQs', icon: HelpCircle },
+  { href: '/admin/media', label: 'Media Library', icon: ImageIcon },
+  { href: '/admin/notifications', label: 'Notifications', icon: Bell },
   { href: '/admin/calculator', label: 'Calculator Settings', icon: Calculator },
   { href: '/admin/settings', label: 'Website Settings', icon: Settings },
 ];
@@ -31,7 +33,7 @@ export function AdminShell({ children }) {
 
   const logout = () => { localStorage.removeItem('rgr_token'); router.replace('/admin/login'); };
 
-  if (!user) return <div className="min-h-screen flex items-center justify-center text-navy-500">Loading…</div>;
+  if (!user) return <div className="min-h-screen flex items-center justify-center text-navy-500">Loading\u2026</div>;
 
   return (
     <div className="min-h-screen bg-navy-50/40 flex">
@@ -40,7 +42,7 @@ export function AdminShell({ children }) {
           <div className="h-9 w-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center"><Sun className="h-5 w-5 text-emerald2-400"/></div>
           <div><div className="font-display font-bold text-sm">RGR Admin</div><div className="text-[10px] uppercase tracking-widest text-emerald2-400">Console</div></div>
         </Link>
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto">
           {nav.map(item => { const Icon = item.icon; const active = pathname === item.href; return (
             <Link key={item.href} href={item.href} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${active?'bg-emerald2-600 text-white':'text-white/70 hover:bg-white/5 hover:text-white'}`}>
               <Icon className="h-4 w-4"/> {item.label}
